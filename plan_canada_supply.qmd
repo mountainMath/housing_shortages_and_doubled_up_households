@@ -1,0 +1,707 @@
+---
+title: "Housing shortages and doubled up households"
+date: "Nov 6, 2024"
+author: 
+  - name: Nathanael Lauster
+    affiliation: UBC Department of Sociology
+  - name: Jens von Bergmann
+    affiliation: MountainMath Software & Analytics
+abstract: |
+  Housing shortages produce higher rents and prices. But they also affect people’s demographic behaviours, primarily by pushing people toward doubling up together. Tracking doubled up households is useful in better understanding housing shortages, as well as benchmarking how much more housing is needed to fix them. The malleability of households, and their responsiveness to shortage, has important implications for planning. Households can't be assumed as fixed when assessing current needs or planning for the future, and increasing livability by reducing doubling up deserves more attention as a planning goal.
+editor: source
+title-meta: "Housing shortages and doubled up households"
+pagetitle: "Housing shortages and doubled up households"
+author-meta: "Nathanael Lauster, Jens von Bergmann"
+execute:
+  echo: false
+  warning: false
+  message: false
+  cache: true
+code-tools:
+  toggle: true
+fig-width: 7
+fig-height: 5
+fig-pos: H
+fig-dpi: 300
+fig-format: 'svg'
+number-sections: true
+backgroundcolor: "#F8F4F0"
+format:
+  html:
+    output-file: "index"
+    embed-resources: true
+    css: doubling_up.css
+  pdf:
+    papersize: letter
+    fontsize: 12pt
+    documentclass: article   
+    fig-cap-location: bottom
+    tbl-cap-location: bottom
+    link-citations: true
+    number-sections: true
+    extra_dependencies: ["float"]    
+    output-file: 'housing_shortages_and_doubled_up_households'
+    geometry: left=3cm,right=2cm,top=2cm,bottom=2cm
+    header-includes: |
+      \usepackage[dvipsnames]{xcolor}
+      \definecolor{mmcolour}{HTML}{F8F4F0}
+      \pagecolor{mmcolour}
+bibliography: doubling_up.bib
+nocite: |
+  @statcan_census_pumf
+---
+
+Housing shortages tie together rising rents with the doubling up of households. We examine these ties in the context of the CMHC's most recent supply gap estimate, which suggests a shortage of 3.5 millions dwelling units needed to restore affordability to early 2000s levels, above and beyond what would be expected to get built under current planning and development processes. The economic models behind gap estimates come with considerable uncertainty, but they direct attention to Canada's accumulated housing shortfall. Demographic models of the shortfall complement these estimates and help illustrate the underlying mechanisms by which they work.
+
+@fig-vacancy_rent_change demonstrates how shortages impact markets directly in the tight relationship between vacancy rates and rents. When vacancy rates are high, rents come down, and vice-versa. 
+
+```{r setup, include=FALSE, cache=FALSE}
+library(tidyverse)
+library(cansim)
+library(canpumf)
+library(cmhc)
+library(cancensus)
+
+all_years <- c("2011","2016","2021")
+year_colours <- setNames(sanzo::trios$c142 |> rev(),all_years)
+```
+
+
+
+```{r vacancy-rent-data-import}
+get_timeseries <- function(series,geo_uid) {
+  c("April","October") |>
+    map_df(\(season)get_cmhc(survey = "Rms", series = series, 
+                 dimension = "Bedroom Type", breakdown = "Historical Time Periods", 
+                 geo_uid =  geo_uid, filters = list(season=season)))
+}
+
+regions <- list_census_regions("2021") |>
+  filter(level=="CMA",region!="505") |>
+  slice_max(pop,n=12) |>
+  mutate(Name=fct_reorder(name,pop)) 
+
+# regions <- c("48825"="Calgary","48835"="Edmonton","59933"="Vancouver","35535"="Toronto")
+series_names <- c("Vacancy Rate"="Vacancy rate","Average Rent Change"="Rent change")
+#bedroom_vars <- c("Bachelor", "1 Bedroom", "2 Bedroom", "3 Bedroom +", "Total")
+
+inflation <- get_cansim_vector("v108785713","1990-01-01") %>%
+  rename(CPI=val_norm) %>%
+  select(Date,CPI) %>%
+  mutate(CPI=CPI/100)
+
+data <- regions$region |>
+  map_df(\(geo_uid){
+    names(series_names) |>
+      map_df(\(series){
+        c("April","October") |>
+          map_df(\(season)get_cmhc(survey = "Rms", series = series, 
+                                   dimension = "Bedroom Type", breakdown = "Historical Time Periods", 
+                                   geo_uid =  geo_uid, filters = list(season=season)))
+      })
+  }) |>
+  left_join(regions |> select(GeoUID=region,Name),by="GeoUID") |>
+  mutate(Series=series_names[Series]) |>
+  mutate(CV=case_when(Quality=="Excellent" ~ 1,
+                      Quality=="Very good" ~ 3,
+                      Quality=="Good" ~ 6,
+                      Quality=="Fair (Use with Caution)" ~ 8,
+                      TRUE ~ 15)) %>%
+  mutate(Value=Value/100) %>%
+  summarize(Value=weighted.mean(Value,w=1/CV,na.rm=TRUE),
+            CV=weighted.mean(CV,w=1/CV,na.rm=TRUE),
+            .by=c(Series,Date,`Bedroom Type`,Name)) %>%
+  mutate(mean=weighted.mean(Value,w=1/CV,na.rm=TRUE),.by=c(Series,Date)) %>%
+  left_join(inflation,by="Date") 
+
+reference_date <- as.Date("2000-01-01")
+vacancy_cutoff=0.03
+
+paired_colors <- RColorBrewer::brewer.pal(6,"Paired")[c(1,2,5,6)]
+series_names <- data$Series %>% unique
+series_colors <- c("Vacancy rate"=paired_colors[1], "Rent change" = paired_colors[3])
+series_labels <- c("Vacancy rate"="Primary vacancy rate", "Rent Change" = "Fixed sample rent change\n(inflation adjusted)" )
+color_labels <- c()
+color_labels[paired_colors[1]]="Vacancy rate"
+color_labels[paired_colors[3]] = "Fixed sample rent change (inflation adjusted)"
+
+plot_data <- data %>% 
+  filter(`Bedroom Type`=="Total") %>%
+  mutate(Value=ifelse(Series=="Rent change",Value-CPI,Value)) %>%
+  group_by(Series,Name,`Bedroom Type`) %>%
+  mutate(Next=lead(Value,order_by = Date)) %>%
+  mutate(Previous=lag(Value,order_by = Date)) %>%
+  mutate(diff=difftime(Date,lag(Date,order_by = Date)) %>% as.integer) %>%
+  ungroup() %>%
+  mutate(keep=!is.na(Value)| !(diff<200 & !is.na(Previous))) %>%
+  filter(keep) %>%
+  mutate(Value=coalesce(Value,mean)) %>%
+  mutate(day=difftime(Date,reference_date) %>% as.integer) %>%
+  select(Date,Name,day,Series,Value) |>
+  mutate(Next=lead(Value,order_by = Date),.by=Series) %>%
+  mutate(color=ifelse(Series=="Vacancy rate",
+                      ifelse(Value>=vacancy_cutoff,paired_colors[2],paired_colors[1]),
+                      ifelse(Value<=0,paired_colors[4],paired_colors[3]))) |>
+  mutate(line_color=ifelse(Series=="Vacancy rate",paired_colors[1],paired_colors[3]))
+
+```
+
+```{r fig-vacancy_rent_change, warning=FALSE, message=FALSE,fig.height=4}
+#| fig-cap: "Vacancy rates above 3% tend to result in rent declines, while those below 3% result in rent increases"
+
+plot_data |>
+  filter(grepl("Vancouver|Toronto|Calgary|Halifax|Edmonton|Montr|Hamilton|London",Name)) |>
+ggplot(aes(x=Date,y=Value,color=Series,group=Series))+
+  geom_hline(yintercept = 0,size=0.5,color="#aa6666") +
+  geom_hline(yintercept = vacancy_cutoff,color="#6666aa",size=0.5) +
+  geom_line(aes(color=line_color),size=1) +
+  scale_y_continuous(labels = scales::percent,breaks=seq(-0.2,0.2,0.05)) +
+  scale_color_identity(labels=color_labels,breaks=as.character(series_colors),guide = "legend") +
+  facet_wrap(~fct_rev(Name),ncol=4) +
+  theme(legend.position = "bottom") +
+  geom_point(size=1,aes(color=color),shape=21) +
+  labs(title="Vacancy Rate and Rent Change by Canadian Metro Area",
+       caption="Data: CMHC Rms & StatCan v108785713",
+       colour=NULL,x=NULL,y=NULL)
+```
+
+In other words, market shortages produce rising rents, as landlords and prospective tenants set bids and expectations in response to conditions. Can we see any similar relationship in the demography of housing shortage?
+
+# The Demography of Housing Shortage
+
+Demography encourages us to consider more broadly how people respond to local housing shortages. To simplify the matter, people can:
+
+-   go without housing
+-   move (or stay) away
+-   double up in the same dwelling unit
+
+We know from research that homelessness is strongly related to local rents and housing shortages, but estimates of the size of the homeless population are both methodologically challenging to obtain and small relative to the scale of the estimated supply gap. [@kneebone2021local] Migration responses to housing shortages are similarly difficult to quantify. And while there is anecdotal data, e.g. the "leaving Vancouver" letters, inter-regional migration is generally more responsive to labour market conditions than to housing. What about doubling up?
+
+We can think of doubling up as occurring where people live together who we might expect to split into separate households if a free dwelling were available to them. Certain "minimal household units" would be likely to stay together anyway even if they were offered a free dwelling, including couples along with parents and their dependent children. [@ermisch1985minimal] But we could expect other households to split apart, and define these as our "doubled up" households. @fig-non-mhu gives an overview over the share of the population that is doubled up in select metro ares, broken down by age and living arrangements.
+
+```{r pumf-data-import}
+mhu_cats_2021 <- c("Married spouse or common-law partner without children",
+                   "Married spouse or common-law partner with children",
+                   "Parent in a one-parent family","Person living alone")
+
+mhu_hh_cats_2021 <- c("One-census-family household without additional persons: Couple without children",
+                      "One-census-family household without additional persons: Couple with children",
+                      "One-census-family household without additional persons: one-parent family",
+                      "Non-census-family household: one-person household")
+fam_grep_string <- "common-law|married|spouse|partner|Comlaw|Commlaw|husband|wife"
+
+mhu4_cats_2021 <- c("Married spouse or common-law partner with children")
+
+
+pumf_2021 <- get_pumf("Census","2021") |>
+  label_pumf_data(rename_columns = FALSE) |>
+  mutate(SEX=fct_recode(GENDER,"Female"="Woman+","Male"="Man+")) |>
+  mutate(hh_lower=case_when(HHINC=="Under $2,000" ~ 0,
+                         TRUE ~ as.numeric(gsub("\\$|,","",str_extract(as.character(HHINC),"^\\$[\\d,]+")))),
+         hh_upper=case_when(HHINC=="$250,000 and over" ~ 350000,
+                         TRUE~as.numeric(gsub("\\$|,","",str_extract(as.character(HHINC),"\\$[\\d,]+$"))))) %>%
+  mutate(hh_income=(hh_lower+hh_upper)/2) |>
+  mutate(max_rent=hh_income*0.3) |>
+  mutate(max_rent2=hh_income*0.5) |>
+  mutate(gap=pmax(SHELCO*12-max_rent,0)) |>
+  mutate(gap2=pmax(SHELCO*12-max_rent2,0)) |>
+  mutate(TENUR=fct_recode(TENUR,"Renter"="Renter or Dwelling provided by the local government, First Nation or Indian band")) |>
+  mutate(CMA=fct_recode(CMA,"Other"="Other census metropolitan areas, census agglomerations and other geographies")) |>
+  mutate(Year="2021")
+
+pumf_2016 <- get_pumf("Census","2016") |>
+  label_pumf_data(rename_columns = FALSE) |>
+  mutate(hh_lower=case_when(HHINC=="Under $2,000" ~ 0,
+                         TRUE ~ as.numeric(gsub("\\$|,","",str_extract(as.character(HHINC),"^\\$[\\d,]+")))),
+         hh_upper=case_when(HHINC=="$250,000 and over" ~ 350000,
+                         TRUE~as.numeric(gsub("\\$|,","",str_extract(as.character(HHINC),"\\$[\\d,]+$"))))) %>%
+  mutate(across(c(TOTINC,SHELCO),as.numeric)) %>%
+  mutate(TOTINC=ifelse(TOTINC>=88888888,NA,TOTINC)) |>
+  mutate(hh_income=(hh_lower+hh_upper)/2) |>
+  mutate(max_rent=hh_income*0.3) |>
+  mutate(max_rent2=hh_income*0.5) |>
+  mutate(gap=pmax(SHELCO*12-max_rent,0)) |>
+  mutate(gap2=pmax(SHELCO*12-max_rent2,0)) |>
+  mutate(TENUR=fct_recode(TENUR,"Renter"="Rented or Band housing","Owner"="Owned by a member of the household")) |>
+  mutate(CMA=fct_recode(CMA,"Other"="Other census metropolitan areas, census agglomerations and other geographies",
+                        "Greater Sudbury – Thunder Bay"="Greater Sudbury / Grand Sudbury – Thunder Bay",
+                        "Kelowna – Abbotsford-Mission"="Kelowna – Abbotsford"))  |>
+  mutate(HHTYPE=fct_recode(HHTYPE,
+                           "One-census-family household without additional persons: one-parent family"=
+                             "One-census-family household without additional persons: Lone parent family",
+                           "One-census-family household with additional persons: one-parent family"=
+                             "One-census-family household with additional persons: Lone parent family",
+                           "Non-census-family household: one-person household"=
+                             "Non-census-family households One person household",
+                           "Non-census-family household: two-or-more-person non-census-family household"=
+                             "Non-census-family household: Two or more person non-census-family household")) |>
+  mutate(CFSTAT=fct_recode(CFSTAT,
+                           "Parent in a one-parent family"="Lone parent",
+                           "Child of a parent in a one-parent family"="Child of a lone parent",
+                           "Person not in a census family living with non-relatives only"=
+                             "Person living with non-relatives only")) |>
+  mutate(Year="2016")
+
+pumf_2011 <- get_pumf("Census","2011") |>
+  label_pumf_data(rename_columns = FALSE) |>
+  mutate(hh_lower=case_when(HHINC=="Under $2,000" ~ 0,
+                         TRUE ~ as.numeric(gsub("\\$|,","",str_extract(as.character(HHINC),"^\\$[\\d,]+")))),
+         hh_upper=case_when(HHINC=="$250,000 and over" ~ 350000,
+                         TRUE~as.numeric(gsub("\\$|,","",str_extract(as.character(HHINC),"\\$[\\d,]+$"))))) %>%
+  mutate(TENUR=fct_recode(TENUR,"Renter"="Rented or Band housing","Owner"="Owned by a member of the household")) |>
+  mutate(across(c(TOTINC,GROSRT,OMP),as.numeric)) %>%
+  mutate(TOTINC=ifelse(TOTINC>=88888888,NA,TOTINC),
+         GROSRT=ifelse(GROSRT>=8888,NA,GROSRT),
+         OMP=ifelse(OMP>=8888,NA,OMP)) |>
+  mutate(SHELCO=coalesce(GROSRT,OMP)) |>
+  mutate(hh_income=(hh_lower+hh_upper)/2) |>
+  mutate(max_rent=hh_income*0.3) |>
+  mutate(max_rent2=hh_income*0.5) |>
+  mutate(gap=pmax(SHELCO*12-max_rent,0)) |>
+  mutate(gap2=pmax(SHELCO*12-max_rent2,0)) |>
+  mutate(CMA=fct_recode(CMA,"Other"="Other census metropolitan areas, census agglomerations and other geographies",
+                        "Greater Sudbury – Thunder Bay"="Greater Sudbury / Grand Sudbury – Thunder Bay",
+                        "Kelowna – Abbotsford-Mission"="Kelowna – Abbotsford"))  |>
+  mutate(HHTYPE=fct_recode(HHTYPE,
+                           "One-census-family household without additional persons: Couple without children"= 
+                             "One-family only households: Married couples or common-law partners without children",
+                           "One-census-family household without additional persons: Couple with children"=
+                             "One-family only households: Married couples or common-law partners with children",
+                           "One-census-family household with additional persons: Couple without children"=
+                             "One-family households with persons not in a census family: Married couples or common-law partners without children",
+                           "One-census-family household with additional persons: Couple with children"=
+                             "One-family households with persons not in a census family: Married couples or common-law partners with children",
+                           "One-census-family household without additional persons: one-parent family"=
+                             "One-family only households: Lone parents",
+                           "One-census-family household with additional persons: one-parent family"=
+                             "One-family households with persons not in a census family: Lone parents",
+                           "Multiple-census-family household"=
+                             "Multiple-family households",
+                           "Non-census-family household: one-person household"=
+                             "Non-family households: One person only",
+                           "Non-census-family household: two-or-more-person non-census-family household"=
+                             "Non-family households: Two or more persons")) |>
+  mutate(CFSTAT=fct_recode(CFSTAT,
+                           "Parent in a one-parent family"="Lone parent",
+                           "Child of a parent in a one-parent family"="Child of a lone parent",
+                           "Person not in a census family living with non-relatives only"=
+                             "Person living with non-relatives only")) |> 
+  mutate(Year="2011")
+
+
+pumf_selects <- c("CMA","AGEGRP","PRIHM","TENUR","HCORENEED_IND","SHELCO",
+                  "CFSTAT","HHTYPE","HHSIZE","CFSIZE",
+                  "BEDRM","MOB1","MOB5","TOTINC","EFDECILE","SUBSIDY","ATTSCH",
+                  "hh_income","max_rent","max_rent2",
+                  "gap","gap2","Year","WEIGHT")
+
+pumf_data <- bind_rows(pumf_2011 |> select(any_of(pumf_selects)),
+                       pumf_2016 |> select(any_of(pumf_selects)),
+                       pumf_2021 |>  select(any_of(pumf_selects))) |>
+  mutate(Year=factor(Year)) |>
+  mutate(EFDECILE=fct_recode(EFDECILE,
+                             !!!setNames(pumf_2021$EFDECILE |> levels(),
+                                         pumf_2016$EFDECILE |> levels())),
+         SUBSIDY=fct_recode(SUBSIDY,
+                             !!!setNames(c("Not subsidized", "Subsidized", "Not available", "Not applicable"),
+                                         c("No, not a subsidized dwelling", "Yes, a subsidized dwelling", "Not available", "Not applicable" ))))
+
+
+child_years <- c("0 to 4 years","5 to 6 years","7 to 9 years","10 to 11 years","12 to 14 years","15 to 17 years","18 to 19 years")
+
+
+mhu_data <- pumf_data |>
+    mutate(MHU_CFSTAT=CFSTAT %in% mhu_cats_2021 | 
+             (CFSTAT %in% c("Child of a couple","Child of a parent in a one-parent family") & 
+                AGEGRP %in% c("0 to 4 years","5 to 6 years", "7 to 9 years", "10 to 11 years","12 to 14 years",
+                              "15 to 17 years","18 to 19 years" ,"20 to 24 years" ) )) |>
+    mutate(MHU_HHTYPE=HHTYPE %in% mhu_hh_cats_2021) |>
+    mutate(MHU_hhcf=MHU_CFSTAT&MHU_HHTYPE) |>
+    mutate(MHU4=CFSTAT %in% mhu4_cats_2021) |>
+    mutate(GROSRT=SHELCO) |>
+    mutate(HHCLASS="Private household") |>
+    mutate(HHSIZE=fct_recode(HHSIZE,NULL = "Not available")) |>
+    mutate(CFSIZE=fct_recode(CFSIZE,"1 person"="Person not in a census family",NULL = "Not available")) |>
+    mutate(HHSIZE_n=as.numeric(substr(HHSIZE,1,2) |> gsub(" |\\+","",x=_))) |>
+    mutate(CFSIZE_n=as.numeric(substr(CFSIZE,1,2) |> gsub(" |\\+","",x=_))) |>
+    mutate(MHU_size=case_when(is.na(CFSIZE_n)|is.na(HHSIZE_n) ~ NA,
+                              CFSIZE_n==HHSIZE_n ~ TRUE,
+                              CFSIZE_n>=HHSIZE_n ~ NA,
+                              CFSIZE_n<HHSIZE_n ~ FALSE,
+                              TRUE ~ NA)) |>
+    mutate(MHU_size=MHU_size & (!grepl("Child of a",CFSTAT) |
+                                  AGEGRP %in% c("0 to 4 years","5 to 6 years", "7 to 9 years", "10 to 11 years","12 to 14 years",
+                              "15 to 17 years","18 to 19 years" ))) |>
+    mutate(MHU=MHU_size&MHU_hhcf) |>
+    mutate(MHU=coalesce(MHU,MHU_hhcf)) |>
+      mutate(MHU1=MHU&(!is.na(CFSIZE_n) & CFSIZE_n==1 | 
+                       is.na(CFSIZE_n) & CFSTAT %in% c("Person living alone","NCFPL Living alone"))) |>
+    mutate(MHU2=MHU & (grepl("lone parent|lone-parent|Lonepar|one-parent",CFSTAT,ignore.case = TRUE) |
+                         HHTYPE=="One-family only households: Lone parents")) |>
+    mutate(MHU3=MHU&(!is.na(CFSIZE) & CFSIZE_n==2 & grepl(fam_grep_string,CFSTAT,ignore.case = TRUE) |
+                       is.na(CFSIZE_n) & HHTYPE %in% c("One-census-family household without additional persons: Couple without children",
+                                                       "One-family only households: Married couples or common-law partners without children"))) |>
+    mutate(MHU4=MHU&(!is.na(CFSIZE) & CFSIZE_n>2 & grepl(fam_grep_string,CFSTAT,ignore.case = TRUE) |
+                       AGEGRP %in% child_years & CFSTAT=="Child of a couple" |
+                       is.na(CFSIZE_n) & HHTYPE %in% c("Fam-Oneh-Cou-NowM-wNMSD-woAP",
+                                                       "One-census-family household without additional persons: Couple with children",
+                                                       "One-family only households: Married couples or common-law partners with children"))) |>
+    mutate(MHU_cat=case_when(
+      MHU1 ~ "MHU1",
+      MHU2 ~ "MHU2",
+      MHU3 ~ "MHU3",
+      MHU4 ~ "MHU4",
+      TRUE ~ "Non-MHU",
+    )) |>
+    mutate(MHU_cat=factor(MHU_cat,levels=c("MHU1","MHU2","MHU3","MHU4","Non-MHU"))) |>
+    mutate(school=case_when(is.na(ATTSCH) | ATTSCH == "Not available" ~ "Not available",
+                            ATTSCH %in% c("Not applicable","Not applicable (< 15 years)") ~ "Not applicable",
+                            ATTSCH %in% c("Did not attend in past 9 mths.",
+                                          "NotAttendPast8Months",
+                                          "Did not attend school",
+                                          "Do not attend",
+                                          "Not attending school") ~ "Not attending school", 
+                            TRUE ~ "Attending school")) |>
+      mutate(NMHU_cat = case_when(
+      MHU ~ "MHU",
+      HHTYPE == "Non-census-family household: two-or-more-person non-census-family household" ~ "Living with roommates",
+      HHTYPE == "Multiple-census-family household" ~ "Living in multifamily household",
+      CFSTAT =="Person not in a census family but living with other relatives" ~ "Living with relatives",
+      CFSTAT %in% c("Child of a couple","Child of a parent in a one-parent family") & 
+        AGEGRP %in% c("25 to 29 years",    "30 to 34 years",    "35 to 39 years") ~ "Young adult living with parents",
+      CFSTAT %in% c("Child of a couple","Child of a parent in a one-parent family") & 
+        AGEGRP %in% c("20 to 24 years") ~ "20 to 24 year old living with parents",
+      CFSTAT %in% c("Child of a couple","Child of a parent in a one-parent family") & 
+        AGEGRP %in% c("40 to 44 years" ,   "45 to 49 years",    "50 to 54 years") ~ "Older adult living with parents",
+      CFSTAT %in% c("Child of a couple","Child of a parent in a one-parent family") & 
+        AGEGRP %in% c("55 to 59 years",    "60 to 64 years","65 to 69 years",    "70 to 74 years",
+                      "75 to 79 years",    "80 to 84 years",    "85 years and over") ~ "55+ adult living with parents",
+      HHTYPE %in% c("One-census-family household with additional persons: Couple without children",
+                    "One-census-family household with additional persons: Couple with children",
+                    "One-census-family household with additional persons: one-parent family")  ~ "Living in complex household",
+      Year=="2006" & HHTYPE %in% c("One family, common-law couple",
+                                    "One family, lone parent family",
+                                    "One family, married couple") ~ "Living in complex household",
+      TRUE ~ "Other"
+    )) |>
+    mutate(NMHU_cat=factor(NMHU_cat,
+                           levels=c("20 to 24 year old living with parents","Young adult living with parents",
+                                    "Older adult living with parents","55+ adult living with parents",
+                                    "Living in multifamily household",
+                                    "Living with roommates","Living with relatives",
+                                    "Living in complex household","Other","MHU"))) |>
+  mutate(NMHU_cat=fct_recode(NMHU_cat,"Adult living with parents"="20 to 24 year old living with parents",
+                             "Adult living with parents"="Young adult living with parents",
+                             "Adult living with parents"="Older adult living with parents",
+                             "Adult living with parents"="55+ adult living with parents")) |>
+    mutate(MHU_full=case_when(
+      MHU ~ MHU_cat,
+      TRUE ~ NMHU_cat
+    )) |>
+    mutate(MHU_full=factor(MHU_full,setdiff(c(levels(MHU_cat),levels(NMHU_cat)),c("MHU","Non-MHU")))) |>
+    mutate(Maintainer=case_when(PRIHM %in% c("Yes","Primary household maintainer","PrimaryHhldMaintainr",
+                                             "Person is primary maintainer")~ "Maintainer",
+                                PRIHM %in% c("No","Not primary hhld. maintainer","NoPrimryHhldMaintain",
+                                             "Not primary household maintainer","Person is not primary maintainer")~ "Not a maintainer",
+                                PRIHM=="Not applicable"~ "Not applicable",
+                                TRUE ~ "Other")) 
+
+
+mhu_recodes <- c("MHU1"="Living alone",
+                 "MHU3"="Couple without children",
+                 "MHU4"="Couple with children",
+                 "MHU2"="Single parent",
+                 "Living in multifamily household"="Multifamily household",
+                 "Living with roommates"="With roommates",
+                 "Living with relatives"="With relatives",
+                         "Living in complex household"="Complex household")
+
+nmhu_colours <- setNames(MetBrewer::met.brewer("Egypt",5),
+                         c("Adult living with parents",
+                           "With relatives",
+                           "With roommates",
+                           "Multifamily household",
+                           "Complex household" ))
+mhu_colours <- setNames(RColorBrewer::brewer.pal(4,"Pastel1"),
+                        c("Living alone",
+                          "Couple without children",
+                          "Couple with children",
+                          "Single parent"))
+
+age_recodes <- setNames(gsub(" years","",mhu_data$AGEGRP |> levels()) |>
+                          gsub("85 and over","85+",x=_),
+                        mhu_data$AGEGRP |> levels())
+```
+
+
+
+```{r fig-non-mhu, fig.width=7, fig.height=5}
+#| fig-cap:  The share of the population not in minimal household units and their living arrangements vary by age and across geographies. From the PUMF data we can't easily identify which adults have adult children living with them, so we treat parents with adult children at home as living in Minimal Household Units, but not their children.
+
+mhu_data |> 
+  summarize(Count=sum(WEIGHT),
+            .by=c(MHU_full,AGEGRP,Year)) |>
+  mutate(CMA=factor("Canada")) |>
+  bind_rows(mhu_data |> 
+              summarize(Count=sum(WEIGHT),
+                        .by=c(MHU_full,CMA,AGEGRP,Year)) |>
+              filter(CMA %in% c("Vancouver","Calgary","Toronto","Montréal","Québec")) |>
+              mutate(CMA=paste0(CMA," CMA"))) %>%
+  mutate(CMA=factor(CMA,levels=summarize(.,Count=sum(Count),.by=CMA) |> arrange(-Count) |> pull(CMA))) |>
+  mutate(Share=Count/sum(Count),.by=c(AGEGRP,CMA,Year)) %>%
+  filter(AGEGRP!="Not available") |>
+  mutate(AGEGRP=droplevels(AGEGRP)) |>
+  filter(Year=="2021") |>
+  mutate(MHU_full=recode(MHU_full,!!!mhu_recodes)) |>
+  mutate(MHU_full=factor(MHU_full,levels=c(names(mhu_colours),names(nmhu_colours)))) |>
+  mutate(AGEGRP=recode(AGEGRP,!!!age_recodes)) |>
+  ggplot(aes(fill=fct_rev(MHU_full),x=Share,y=fct_rev(AGEGRP),alpha=fct_rev(MHU_full)))+
+  geom_bar(stat="identity") +
+  scale_x_continuous(labels = scales::percent,breaks=seq(0.25,0.75,0.25)) +
+  facet_wrap(~CMA,nrow=1) +
+  scale_fill_manual(values=c(nmhu_colours,mhu_colours),breaks=names(nmhu_colours)) +
+  scale_alpha_manual(values=rep_len(1,9),breaks=names(mhu_colours)) +
+  guides(fill=guide_legend(reverse = FALSE,ncol=2,title.position="top",order=2,title.hjust=0),
+         alpha=guide_legend(reverse = FALSE,ncol=2,title.position="top",order=1,
+                            override.aes = list(fill=mhu_colours))) +
+  theme(legend.position="bottom") +
+  labs(title="Living Arrangements of Population in Private Households in 2021 by Age",
+       #subtitle="(not counting parents of adult children as outside of Minimal Household Units)",
+       y=NULL,
+       fill="Doubled Up Household Units",
+       alpha="Minimal Household Units",
+       x="Share of people",
+       caption="Data: StatCan Census 2021 PUMF (individuals)")
+```
+
+We define doubling up conservatively here with a desire for independence starting at age 20. Young adults just past this age are the most likely to be doubled up, especially living with parents or living with roommates.^[We regard 18 to 19 year olds living with parents as dependent children and adults 20 years and over as independent, though we recognize young adults in their early twenties may still be somewhat dependent on their parents, especially if they are still in school. Moreover, the census codes post-secondary students generally as living with parents if they return home during the semester break, which inflates the estimate of the number of young adults living with parents in the 20 to 24 year old age bracket.] As people age into the 25-29 range, there is a dramatic drop off in doubling up, with a further drop in ages 30-34. As living with parents and roommates declines, other forms of doubling up rise, including multifamily households, living with other relatives (besides parents), and more complex households where families share housing with other non-family members. 
+
+While age-related patterns look similar, the overall levels of doubling up vary considerably between Census Metropolitan Areas. In particular, metro Toronto and Vancouver stand out with high levels of doubling up across all ages, while metro Quebec exhibits comparatively low levels. What explains the different rates of doubling up across metro areas, and how much housing would we need to reduce or eliminate doubling up?
+
+# Doubling up and the Housing Shortage
+
+Where @fig-non-mhu focuses on how people are doubling up to cope with housing pressures, we can turn this around and ask how much housing is needed to allow every minimal household unit to form their own household. This provides a rough demographic benchmark of our housing shortage. All we need are population figures by age and partnership status compared to current (occupied) dwelling units. @fig-non-mhu-shortfall shows the resulting estimated housing shortfall, which we can define as the minimum number of dwellings needed to avoid any doubling up.^[Here we discounted post-K12 students aged 20 to 24 living with parents by a factor 1/2 as a rough accounting for census re-coding of some students as living with parents and not counting dwellings entirely occupied by such re-coded students as households.] In addition to relying on the 2021 census we show data for 2011 and 2016 as well, both as a check against any effects peculiar to the pandemic captured in the 2021 census and to help assess recent trends.
+
+```{r rent-timeline}
+inflation <- get_cansim_vector("v41690973") |>
+  filter(strftime(Date,"%m")=="05") |>
+  mutate(Year=strftime(Date,"%Y")) |>
+  filter(Year %in% levels(pumf_data$Year)) |>
+  mutate(Year=factor(Year, levels=levels(pumf_data$Year))) |>
+  mutate(CPI=VALUE/last(VALUE,order_by=Year)) |>
+  select(Year,CPI)
+
+rents <- mhu_data |>
+  filter(!(MOB1 %in% c("Non-movers","Not available", "Not applicable"))) |>
+  mutate(BEDRM=="2 bedrooms", 
+         TENUR %in% c("Renter",
+                      "Renter or Dwelling provided by the local government, First Nation or Indian band")) |>
+  summarise(nominal_rent=mean(SHELCO,na.rm=TRUE),.by=c(CMA,Year)) |>
+  left_join(inflation,by="Year") |>
+  mutate(rent=nominal_rent/CPI)
+```
+
+
+```{r fig-non-mhu-shortfall}
+#| fig-cap: "The minimum number of dwelling units needed to avoid any doubling up has increased between censuses in most census metropolitan areas. The Quebec City CMA is a notable exception in managing to translate increasing real incomes into improving housing outcomes."
+
+school_cats <- c(
+  "Yes, attended trade school, college, CEGEP or other non-university institutions only",
+  "Yes, attended university only",
+  "Multiple responses",
+  "Technical or trade school, community college or CEGEP",
+  "University",
+  "College, CEGEP, trade school or other non-university institution"
+)
+
+
+mhu_counts <- mhu_data |> 
+  filter(AGEGRP!="Not available") |>
+  filter(!(AGEGRP %in% child_years)) |> # | AGEGRP %in% c("18 to 19 years")) |>
+  filter(Maintainer!="Not applicable") |>
+  filter(!((AGEGRP %in% c("18 to 19 years")) & 
+             CFSTAT %in% c("Child of a couple","Child of a parent in a one-parent family"))) |>
+  mutate(household_weight=case_when(Maintainer == "Maintainer" ~ 1,
+                              TRUE~0)) |>
+  mutate(discount_20_24 = AGEGRP=="20 to 24 years" & 
+           MHU_full %in% c("20 to 24 year old living with parents","Adult living with parents") &
+           !is.na(MHU_full) & 
+           ATTSCH %in% school_cats) |>
+  mutate(MHU_weight=case_when(CFSTAT %in% c("Married spouse or common-law partner without children",
+                                            "Married spouse or common-law partner with children") ~ 1/2,
+                              discount_20_24~1/2,
+                              TRUE ~ 1)) |>
+  mutate(status=MHU_full) |>
+  mutate(status=discount_20_24) |>
+  mutate(status=factor(status)) |>
+  summarize(MHU_households=sum(MHU_weight*WEIGHT),
+            Households=sum(household_weight*WEIGHT),.by=c(CMA,status,Year)) %>%
+  bind_rows(summarize(.,MHU_households=sum(MHU_households),
+            Households=sum(Households),.by=c(status,Year)) |> mutate(CMA="Canada")) |>
+  mutate(ratio=MHU_households/sum(Households),.by=c(CMA,Year)) %>%
+  filter(CMA!="Other") %>%
+  mutate(CMA=factor(CMA,levels=filter(.,Year=="2021") |>
+                      summarize(ratio=sum(ratio),.by=c(Year,CMA)) |> arrange(ratio) |> pull(CMA))) |>
+  summarise(ratio=sum(ratio)-1,
+            across(c(MHU_households,Households),sum),
+            .by=c(CMA,Year)) |>
+  left_join(rents,by=c("CMA","Year"))
+
+mhu_counts |>
+  ggplot(aes(x=ratio,y=CMA,fill=Year))+
+  geom_bar(stat="identity",position="dodge") +
+  scale_fill_manual(values=year_colours) +
+  scale_x_continuous(labels=scales::percent) +
+  guides(fill=guide_legend(reverse=TRUE)) +
+  labs(title="Minimum Added Dwellings Needed to Avoid any Doubling Up in Canadian CMAs",
+       x="Excess of minimal household units over actual households",
+       y=NULL,
+       caption="Data: StatCan Census 2011 (NHS), 2016, 2021 PUMF (individuals)")
+```
+
+
+At the low end, the Québec City CMA gives an indication that even our cheapest metropolitan areas still have doubled up households. Indeed, it is likely that some of this doubling up is voluntary, and we could expect that it would continue even if we made more housing available to everyone. As we move toward the top of the figure, we can expect that doubling up is increasingly involuntary, and households will split apart if we add more housing. Overall, the minimum number of dwellings to avoid any doubling up provides a useful benchmark for understanding current housing shortages.^[To get from current housing shortfall to forecasting the projected housing shortfall at some point in the future requires further demographic modelling, laying out assumptions about deaths, births, and future migration (which is endogenous to housing supply). An added caveat to the purely demographic approach outlined here is that economic drivers of housing demand are also important.]
+
+The regions with the highest housing shortfall are also the regions with the highest rents, and this is no coincidence. Housing shortages lead to low vacancy rates and the bidding up of prices and rents as shown in @fig-vacancy_rent_change. The highest bids are often set by a combination of the richest and most desperate people forming new households. Others remain doubled up. To understand the underlying mechanisms better, we turn to a more detailed look at the relationship between rents and housing shortages, and the demographic response to undoing housing shortages.
+
+
+# Sliding down the demand curve
+
+The CMHC housing shortfall model is based upon how much housing supply would have to be added to bring down prices.^[The CMHC model recognizes the added complexities of economic factors like incomes, interest rates, and property taxes and also translates prices into broader affordability levels.] In effect, supply curves and demand curves intersect at price levels, and the CMHC backtrack from the price levels they want to achieve to the supply needed to get there. Our housing shortfall model is based upon the demographics of doubled up households, but it's effectively operating through the same processes. 
+
+```{r mhu-fit-effect}
+mhu_count.fit <- all_years |>
+  lapply(\(y) lm(log(1+ratio)~log(rent),data=mhu_counts |> filter(Year==y))) |>
+  setNames(all_years)
+
+slopes <- mhu_count.fit |> lapply(\(fit)coef(fit)[2])
+
+slope <- coef(mhu_count.fit[["2021"]])[2] |> as.numeric()
+
+yvr_yul_effect <- rents |> 
+  select(-nominal_rent) |>
+  filter(Year=="2021") |>
+  filter(CMA %in% c("Montréal","Vancouver")) |>
+  pivot_wider(names_from=CMA,values_from=rent) |>
+  mutate(rent_change=log(Montréal/Vancouver)) |>
+  mutate(share_change=exp(rent_change*slope)) |>
+  left_join(mhu_counts |> filter(CMA=="Vancouver"),by="Year") |>
+  mutate(household_change=1/share_change-1)  |>
+  mutate(ppt_change=ratio-(ppt_change=share_change*(1+ratio)-1)) 
+```
+
+Adding new housing temporarily raises vacancy rates and puts downward pressure on rents and prices, allowing people to split up into new households filling those vacancies. We can quantify the net effect by looking at the relationship between rents and excess minimal household units over households that actually formed. @fig-non-mhu-shortfall-rents suggests that a 10% decrease in rents would lead to a `r round(-slope*log(0.9)*100,digits=1)` percentage point decrease in the excess of minimum household units over actual households. Here we use turnover rents of 2 bedroom units (moved into during the year preceding the census), as a proxy for the housing available for household members that want to split off. 
+
+```{r fig-non-mhu-shortfall-rents}
+#| fig-cap: The relationship between rents and excess minimal household units over actual households can provide a benchmark for latent demographic housing demand across census metropolitan areas, excluding migration effects. Montréal and Vancouver are highlighted as large metro areas close to the regression line.
+
+
+mhu_counts |>
+  filter(CMA!="Canada") |>
+  mutate(highlighted=CMA %in% c("Montréal","Vancouver")) |>
+  ggplot(aes(y=1+ratio,x=rent,colour=Year))+
+  geom_smooth(method="lm",formula=y~x,fill="#aaaaaa11",alpha = 0.2) +
+  geom_point(aes(shape=highlighted),show.legend=FALSE) +
+  geom_label(aes(label=CMA),vjust=-0.5,hjust=1,data=~filter(.,highlighted),fill=NA,show.legend = FALSE) +
+  scale_colour_manual(values=year_colours) +
+  scale_y_continuous(labels=\(x)scales::percent(x-1),trans="log") +
+  scale_x_continuous(labels=\(x)scales::dollar(x,scale=10^-3,suffix="k",accuracy=0.1),trans="log",breaks=seq(1000,3000,250)) +
+  scale_shape_manual(values=c("TRUE"=19,"FALSE"=21)) +
+  labs(title="Additional Dwellings Needed to Avoid any Doubling Up vs Rents in Canadian CMAs",
+       y="Excess of minimal household units over actual households\n(log scale)",
+       x="Rents for 2 bedroom homes of recent movers (2021 dollars, log scale)",
+       caption="Data: StatCan Census 2011 (NHS), 2016, 2021 PUMF (individuals)")
+```
+
+The relationship is strong, but not perfect. This points to other factors that play into the relationship. Next to income, variation in cultural acceptance of doubling up also matters and explains some of the cross metro variance, but accounting for these factors does not materially change the relationship that we highlight here, as we show in greater detail elsewhere [@mhu.2025].
+
+```{r yvr-housing-stock}
+yvr_housing_stock0 <- get_census("2021",regions=list(CMA="59933"),quiet=TRUE)$Dwellings
+yvr_housing_stock_growth <- cmhc::get_cmhc("Scss","Completions","Dwelling Type","Historical Time Periods",
+                                           geo_uid="59933") |>
+  filter(`Dwelling Type`=="All") 
+
+demo_fudge=0.05
+
+yvr_housing_stock <- yvr_housing_stock0+
+  (1-demo_fudge)*sum(filter(yvr_housing_stock_growth, Date>=as.Date("2021-05-01"))$Value)
+
+yvr_housing_stock_growth_avg <- 12 * yvr_housing_stock_growth |>
+  filter(Date>="2019-01-01",Date<"2024-01-01") |>
+  pull(Value) |>
+  mean()
+
+yvr_housing_stock_years <- yvr_housing_stock*yvr_yul_effect$household_change/yvr_housing_stock_growth_avg
+```
+
+To make the implications of the relationship in @fig-non-mhu-shortfall-rents more concrete, if Vancouver had Montréal's rents the number of excess minimum household units would be `r round(yvr_yul_effect$ppt_change*100,digits=0)` percentage points lower, or equivalently Vancouver would have `r scales::percent(yvr_yul_effect$household_change)` more households, `r scales::comma(yvr_housing_stock*yvr_yul_effect$household_change,accuracy=1000)` in absolute numbers. But Vancouver does not have `r scales::percent(yvr_yul_effect$household_change)` additional dwellings to better house these doubled up households, explaining why Vancouver does not have Montréal rents. 
+
+
+Adding further context, Vancouver needs about `r round(yvr_housing_stock_years)` years worth of housing construction^[At the average pace for the metro area from the past 5 years] in order to enable Vancouverites to reduce doubling up to Montréal's levels, all while keeping the population constant. In reality Canada's population is growing, and has been growing strongly since the 2021 census, so on top of making up for the shortfall Vancouver also has to build housing to keep up with that growth. And if the metro area does manage to ramp up construction to allow households to form more freely and rents to come down, Vancouver will likely see fewer people deciding to leave the region and more people arriving, and this additional population growth will require even more housing.^[Although inter-regional migration effects are generally understood to be slower than the household formation response.]
+
+In summary, @fig-non-mhu-shortfall-rents gives a visual representation of the demographic demand curve for housing of the current population. People respond to scarcity by bidding up rents and doubling up more. Alleviating shortages eases rent pressures, enabling those doubled up to form independent households.
+
+
+# Doubled Up Households and Bad Measurements
+
+Like high rents, prevalence of people doubling up can be treated that as good evidence for housing shortages. But there is another lesson here as well. The concept of minimal household units offers an important reminder that the households we observe are often responses to scarcity. Households are malleable rather than fixed, with members' decisions to live together responding to outside opportunities for achieving independence.
+
+Where it's not taken seriously, the malleability of households can be a problem for measurement of housing shortages. Perhaps the most obvious example emerges where people attempt to measure housing shortages as the difference between existing households and dwellings. So long as there are more dwellings than households, there can't be a shortage, right? This is wrong both by definition (since households are simply the occupants of a dwelling, the number of households can never exceed the number of dwellings) and by measurement (correctly counting dwellings and households is difficult and vacancies tend to be quite limited in time). But the malleability of households offers a further point: often times members of a single household are frustrated by their inability to achieve independent living. Doubling up acts as a measure of this potential frustration, and can tell us much more about housing shortages than counts of often illusory "empty" dwellings. 
+
+A less obvious set of problems emerges for other indicators of housing shortage. Perhaps the most prominent, the Core Housing Need measure, also fixes current households in place, effectively ignoring that some members may not want to double up. This can have perverse effects, where household incomes combine together the wages of individual members and seem to indicate affordability. When more housing becomes available, doubled up households may split apart, resulting in reduced household incomes - and hence paradoxically reducing assessments of affordability - even where housing outcomes overall have improved by enabling independence. Similarly, applying Core Housing Need's bedroom occupancy standards to fixed households can result in overestimating the need for larger dwellings able to fit doubled up households while underestimating the need for more small dwellings allowing them to split apart instead.
+
+Despite the problems with the Core Housing Need measure, @fig-non-mhu-chn shows that, like rent, it is positively correlated with measures of doubling up. 
+
+```{r fig-non-mhu-chn}
+#| fig-cap: "The relationship between Core Housing Need and housing shortage estimates is reflective of the heterogeneity in how people trade off privacy against high shelter cost payments. The correlation between the two persists in both 2016 and 2021, but also highlights the pronounced temporary drop in Core Housing Need associated with CERB payments during the pandemic."
+
+chn_share <- mhu_data |> 
+  filter(Year %in% c("2016","2021")) |>
+  filter(HCORENEED_IND!="Not available") |>
+  summarize(Count=sum(WEIGHT),
+            .by=c(HCORENEED_IND,Year)) |>
+  mutate(CMA=factor("Canada")) |>
+  bind_rows(mhu_data |> 
+              filter(Year %in% c("2016","2021")) |>
+              filter(HCORENEED_IND!="Not available") |>
+              summarize(Count=sum(WEIGHT),
+                        .by=c(HCORENEED_IND,CMA,Year))) |>
+  mutate(CHN_share=Count/sum(Count),.by=c(CMA,Year)) %>%
+  filter(HCORENEED_IND=="In core need") |>
+  filter(CMA!="Other") %>%
+  mutate(CMA=factor(CMA,levels=filter(.,Year=="2021") |> arrange(CHN_share) |> pull(CMA)))
+
+
+inner_join(mhu_counts,chn_share,by=c("CMA","Year")) |>
+  ggplot(aes(x=ratio,y=CHN_share,colour=Year))+
+  geom_smooth(method="lm",formula=y~x,fill="#aaaaaa11") +
+  geom_point(shape=21) +
+  scale_x_continuous(labels = scales::percent) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_color_manual(values=year_colours) +
+  labs(title="Housing Shortage to Avoid Doubling Up vs Core Housing Need in Canadian CMAs",
+       x="Excess of minimal household units over actual households",
+       y="Share of people in Core Housing Need",
+       caption="Data: StatCan Census 2016, 2021 PUMF (individuals)")
+```
+
+Relative to Core Housing Need, doubling up effectively operates as a different, but complementary measure of the effects of housing shortage. In addition to working with minimal household units, we can also explore other ways of grouping people, including age-expected households, or families and unattached individuals (using e.g. taxfiler data), to help identify and track housing shortages. These can be compared to the household metrics already in wide use to show where assumptions might be leading planners and other researchers astray.
+
+# Conclusion
+
+Prices and rents operate as good measures of housing shortage and these drive the CMHC's model of Canada's housing shortfall. But household demography can also offer important insights to planners and other researchers and clarify the mechanisms by which shortages matter. The key takeaway is that households are malleable and doubling up is the main demographic mechanism by which people respond to housing shortages. The prevalence of doubling up offers a way to benchmark the size of housing shortages.
+
+Just as housing shortages put upward pressure on rents and push people toward doubling up, adding more housing puts downward pressure on rents and allows doubled up households to split apart and achieve independence. Estimating the size of the housing shortage and quantifying the effect reducing shortages has on doubling up and rents can guard against skepticism that adding supply is helping by setting realistic expectations of how much work is needed to undo the effects of past shortages. [@been2023]
+
+Household malleability also creates challenges for planning. Planners can't imagine current households as fixed. Instead they need to look within household structures to find who might be ready to form their own household. Just as household numbers depend upon the number of dwellings available to people, household incomes and other key characteristics can also shift as people redistribute themselves across what housing they can find. Housing needs cannot be fully assessed based only the households that have managed to form under conditions of shortage. A remaining complication is that doubling up measures operate at the metro area level and don't necessarily make sense when looking at contingent municipalities in isolation. People redistribute themselves over both dwellings and nearby municipalities in response to availability of housing. But rents and prices can inform where in the metro region demand is highest.
+
+Household shortages don't affect everyone equally. Involuntarily doubling up can create stress on a day-to-day basis, and this stress is often invisible to planners even as it erodes livability for many residents. Focusing solely on affordability gains misses a big part of the value of adding housing: allowing households to split up and achieve their preferred living arrangements. Taking account of doubling up can help planners avoid interpreting the existing household structure as revealed preference and build more equitable and more livable cities.
+
+
+
+
+
+# References  {-}
+
+::: {#refs}
+:::
