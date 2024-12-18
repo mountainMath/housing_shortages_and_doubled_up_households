@@ -10,8 +10,26 @@ abstract: |
   Housing shortages produce higher rents and prices. But they also affect people’s demographic behaviours, primarily by pushing people toward doubling up together. Tracking doubled up households is useful in better understanding housing shortages, as well as benchmarking how much more housing is needed to fix them. The malleability of households, and their responsiveness to shortage, has important implications for planning. Households can't be assumed as fixed when assessing current needs or planning for the future, and increasing livability by reducing doubling up deserves more attention as a planning goal.
 editor: source
 title-meta: "Housing shortages and doubled up households"
+include-in-header: 
+      text: |
+        <meta name="github-repo" content="mountainmath/housing_shortages_and_doubled_up_households"/>
+        <meta name="twitter:title" content="Housing shortages and doubled up households"/>
+        <meta name="twitter:description" content="Tracking doubled up households is useful in better understanding housing shortages, as well as benchmarking how much more housing is needed to fix them."/>
+        <meta name="twitter:url" content="https://mountainmath.github.io/housing_shortages_and_doubled_up_households/housing_shortages_and_doubled_up_households/housing_shortages_and_doubled_up_households.html"/>
+        <meta name="twitter:image" content="https://mountainMath/housing_shortages_and_doubled_up_households/main/fig-non-mhu-shortfall-rents.png"/>
+        <meta name="twitter:image:alt" content="Housing shortages and doubled up households"/>
+        <meta name="twitter:card" content="summary_large_image"/>
+        <meta property="og:title" content="Housing shortages and doubled up households"/>
+        <meta property="og:description" content="Tracking doubled up households is useful in better understanding housing shortages, as well as benchmarking how much more housing is needed to fix them."/>
+        <meta property="og:url" content="https://mountainmath.github.io/housing_shortages_and_doubled_up_households/housing_shortages_and_doubled_up_households/housing_shortages_and_doubled_up_households.html"/>
+        <meta property="og:image" content="https://mountainMath/housing_shortages_and_doubled_up_households/main/fig-non-mhu-shortfall-rents.png"/>
+        <meta property="og:image:alt" content="Housing shortages and doubled up households"/>
+        <meta property="og:type" content="website"/>
+        <meta property="og:locale" content="en_US"/>
+        <meta property="article:author" content="Jens von Bergmann and Nathan Lauster"/>
 pagetitle: "Housing shortages and doubled up households"
 author-meta: "Nathanael Lauster, Jens von Bergmann"
+description-meta: "Tracking doubled up households is useful in better understanding housing shortages, as well as benchmarking how much more housing is needed to fix them."
 execute:
   echo: false
   warning: false
@@ -28,7 +46,7 @@ number-sections: true
 backgroundcolor: "#F8F4F0"
 format:
   html:
-    output-file: "index"
+    output-file: "housing_shortages_and_doubled_up_households"
     embed-resources: true
     css: doubling_up.css
   pdf:
@@ -152,9 +170,9 @@ plot_data <- data %>%
 plot_data |>
   filter(grepl("Vancouver|Toronto|Calgary|Halifax|Edmonton|Montr|Hamilton|London",Name)) |>
 ggplot(aes(x=Date,y=Value,color=Series,group=Series))+
-  geom_hline(yintercept = 0,size=0.5,color="#aa6666") +
-  geom_hline(yintercept = vacancy_cutoff,color="#6666aa",size=0.5) +
-  geom_line(aes(color=line_color),size=1) +
+  geom_hline(yintercept = 0,linewidth=0.5,color="#aa6666") +
+  geom_hline(yintercept = vacancy_cutoff,color="#6666aa",linewidth=0.5) +
+  geom_line(aes(color=line_color),linewidth=1) +
   scale_y_continuous(labels = scales::percent,breaks=seq(-0.2,0.2,0.05)) +
   scale_color_identity(labels=color_labels,breaks=as.character(series_colors),guide = "legend") +
   facet_wrap(~fct_rev(Name),ncol=4) +

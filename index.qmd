@@ -1,0 +1,51 @@
+---
+title: "Housing shortages and doubled up households"
+format: html
+include-in-header: 
+      text: |
+        <meta name="github-repo" content="mountainmath/housing_shortages_and_doubled_up_households"/>
+        <meta name="twitter:title" content="Housing shortages and doubled up households"/>
+        <meta name="twitter:description" content="Tracking doubled up households is useful in better understanding housing shortages, as well as benchmarking how much more housing is needed to fix them."/>
+        <meta name="twitter:url" content="https://mountainmath.github.io/housing_shortages_and_doubled_up_households/housing_shortages_and_doubled_up_households/"/>
+        <meta name="twitter:image" content="https://mountainMath/housing_shortages_and_doubled_up_households/main/fig-non-mhu-shortfall-rents.png"/>
+        <meta name="twitter:image:alt" content="Housing shortages and doubled up households"/>
+        <meta name="twitter:card" content="summary_large_image"/>
+        <meta property="og:title" content="Housing shortages and doubled up households"/>
+        <meta property="og:description" content="Tracking doubled up households is useful in better understanding housing shortages, as well as benchmarking how much more housing is needed to fix them."/>
+        <meta property="og:url" content="https://mountainmath.github.io/housing_shortages_and_doubled_up_households/housing_shortages_and_doubled_up_households/"/>
+        <meta property="og:image" content="https://mountainMath/housing_shortages_and_doubled_up_households/main/fig-non-mhu-shortfall-rents.png"/>
+        <meta property="og:image:alt" content="Housing shortages and doubled up households"/>
+        <meta property="og:type" content="website"/>
+        <meta property="og:locale" content="en_US"/>
+        <meta property="article:author" content="Jens von Bergmann and Nathan Lauster"/>
+title-meta: "Housing shortages and doubled up households"
+pagetitle: "Housing shortages and doubled up households"
+author-meta: "Nathanael Lauster, Jens von Bergmann"
+description-meta: "Tracking doubled up households is useful in better understanding housing shortages, as well as benchmarking how much more housing is needed to fix them."
+---
+
+This is the code repository for the [Plan Canada](https://www.cip-icu.ca/plan-canada/) paper "Housing Shortages and Doubled Up Households", it contains the paper and code to replicate the analysis.
+
+<dl>
+<dt>Plan Canada Paper</dt>
+<dd>
+<a type="button" href="https://raw.githubusercontent.com/mountainMath/housing_shortages_and_doubled_up_households/blob/main/Lauster%20von%20Bergmann_PlanCanada_Winter2024.pdf" class="btn btn-primary">View PlanCanada PDF Paper</a>
+</dd>
+
+<dt>Preprints</dt>
+<dd>
+<a type="button" href="https://mountainmath.github.io/housing_shortages_and_doubled_up_households/housing_shortages_and_doubled_up_households/housing_shortages_and_doubled_up_households.html" class="btn btn-success">View HTML preprint</a>
+</dd>
+<dd>
+<a type="button" href="https://mountainmath.github.io/housing_shortages_and_doubled_up_households/housing_shortages_and_doubled_up_households/housing_shortages_and_doubled_up_households.pdf" class="btn btn-success">View PDF preprint</a>
+</dd>
+
+<dt>Code</dt>
+<dd>
+<a type="button" href="https://github.com/mountainMath/housing_shortages_and_doubled_up_households/blob/main/plan_canada_supply.qmd" class="btn btn-info">View replication code</a>
+</dd>
+<dd>
+<a type="button" href="https://github.com/mountainMath/housing_shortages_and_doubled_up_households" class="btn btn-info">View GitHub Repo</a>
+</dd>
+
+</dl>
