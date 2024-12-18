@@ -25,7 +25,11 @@ author-meta: "Nathanael Lauster, Jens von Bergmann"
 description-meta: "Tracking doubled up households is useful in better understanding housing shortages, as well as benchmarking how much more housing is needed to fix them."
 ---
 
-This is the code repository for the [Plan Canada](https://www.cip-icu.ca/plan-canada/) paper "Housing Shortages and Doubled Up Households", it contains the paper and code to replicate the analysis.
+This is the code repository for the [Plan Canada](https://www.cip-icu.ca/plan-canada/) paper 
+
+`Lauster, Nathanael, and Jens von Bergmann. 2024. “Housing Shortages and Doubled Up Households.” Plan Canada, vol. 64 no.4: 16–21`
+
+This repository contains the paper and code to replicate the analysis.
 
 <dl>
 <dt>Plan Canada Paper</dt>
