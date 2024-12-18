@@ -1,6 +1,7 @@
 ---
 title: "Housing shortages and doubled up households"
 format: html
+backgroundcolor: "#F8F4F0"
 include-in-header: 
       text: |
         <meta name="github-repo" content="mountainmath/housing_shortages_and_doubled_up_households"/>
@@ -29,15 +30,15 @@ This is the code repository for the [Plan Canada](https://www.cip-icu.ca/plan-ca
 <dl>
 <dt>Plan Canada Paper</dt>
 <dd>
-<a type="button" href="https://raw.githubusercontent.com/mountainMath/housing_shortages_and_doubled_up_households/blob/main/Lauster%20von%20Bergmann_PlanCanada_Winter2024.pdf" class="btn btn-primary">View PlanCanada PDF Paper</a>
+<a type="button" href="https://mountainmath.github.io/housing_shortages_and_doubled_up_households/Lauster%20von%20Bergmann_PlanCanada_Winter2024.pdf" class="btn btn-primary">View PlanCanada PDF Paper</a>
 </dd>
 
 <dt>Preprints</dt>
 <dd>
-<a type="button" href="https://mountainmath.github.io/housing_shortages_and_doubled_up_households/housing_shortages_and_doubled_up_households/housing_shortages_and_doubled_up_households.html" class="btn btn-success">View HTML preprint</a>
+<a type="button" href="https://mountainmath.github.io/housing_shortages_and_doubled_up_households/housing_shortages_and_doubled_up_households.html" class="btn btn-success">View HTML preprint</a>
 </dd>
 <dd>
-<a type="button" href="https://mountainmath.github.io/housing_shortages_and_doubled_up_households/housing_shortages_and_doubled_up_households/housing_shortages_and_doubled_up_households.pdf" class="btn btn-success">View PDF preprint</a>
+<a type="button" href="https://mountainmath.github.io/housing_shortages_and_doubled_up_households/housing_shortages_and_doubled_up_households.pdf" class="btn btn-success">View PDF preprint</a>
 </dd>
 
 <dt>Code</dt>
