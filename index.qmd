@@ -32,9 +32,9 @@ This is the code repository for the [Plan Canada](https://www.cip-icu.ca/plan-ca
 This repository contains the paper and code to replicate the analysis.
 
 <dl>
-<dt>Plan Canada Paper</dt>
+<dt>Plan Canada Article</dt>
 <dd>
-<a type="button" href="https://mountainmath.github.io/housing_shortages_and_doubled_up_households/Lauster%20von%20Bergmann_PlanCanada_Winter2024.pdf" class="btn btn-primary">View PlanCanada PDF Paper</a>
+<a type="button" href="https://mountainmath.github.io/housing_shortages_and_doubled_up_households/Lauster%20von%20Bergmann_PlanCanada_Winter2024.pdf" class="btn btn-primary">View PlanCanada PDF Article</a>
 </dd>
 
 <dt>Preprints</dt>
